@@ -1,0 +1,202 @@
+//
+// Created by imper on 1/17/22.
+//
+
+#ifndef EXEC_PROCESS_LINUX_EXECUTE_PROCESS_LINUX_
+#define EXEC_PROCESS_LINUX_EXECUTE_PROCESS_LINUX_
+
+#include <unistd.h>
+#include <log-console>
+#include <cstring>
+
+#define LOG _log_ << log_console::l_lock << log_console::l_localtime << l_location << color::faint << color::yellow
+#define ERR _err_ << log_console::l_lock << log_console::l_localtime << l_location << color::red
+#define ENDENT color::reset << log_console::l_endent
+
+namespace exec
+{
+	extern log_console _log_;
+	extern log_console _err_;
+	
+	namespace pipe
+	{
+		enum : int
+		{
+			read = 0,
+			write,
+			size
+		};
+	}
+	
+	
+	class fd_redirection;
+	
+	/// linux file descriptor wrapper class
+	class linux_file_descriptor
+	{
+	public:
+		inline explicit linux_file_descriptor(int fd) : fd(fd)
+		{ }
+		
+		/// \brief Converts file descriptor to string
+		/// \return file descriptor designation string
+		[[nodiscard]] inline std::string& to_string() const
+		{
+			auto& res = *new std::string;
+			switch (fd)
+			{
+				case 0:
+					res = "<stdin>";
+					break;
+				case 1:
+					res = "<stdout>";
+					break;
+				case 2:
+					res = "<stderr>";
+					break;
+				default:
+					res = "<" + std::to_string(fd) + ">";
+			}
+			return res;
+		}
+	
+	private:
+		friend inline fd_redirection& operator>(const linux_file_descriptor& linux_fd_source, int fd_destination);
+		
+		friend inline fd_redirection& operator>(int fd_source, const linux_file_descriptor& linux_fd_destination);
+		
+		int fd;
+	};
+	
+	/// standard input FD
+	extern linux_file_descriptor std_in;
+	
+	/// standard output FD
+	extern linux_file_descriptor std_out;
+	
+	/// standard error FD
+	extern linux_file_descriptor std_err;
+	
+	
+	/// file descriptor redirection information class
+	class fd_redirection
+	{
+	public:
+		inline fd_redirection(int source, int destination) : source(source), destination(destination)
+		{ }
+		
+		[[nodiscard]] inline int get_source() const
+		{ return source; }
+		
+		[[nodiscard]] inline int get_destination() const
+		{ return destination; }
+	
+	private:
+		friend inline void process_redirection(fd_redirection redirection);
+		
+		int source;
+		int destination;
+	};
+	
+	
+	/// \brief redirects output from \b fd_source to \b fd_destination
+	///
+	/// \param fd_source Source file descriptor
+	/// \param fd_destination Destination file descriptor
+	inline fd_redirection& operator>(const linux_file_descriptor& fd_source, int fd_destination)
+	{
+		return *new fd_redirection(fd_source.fd, fd_destination);
+	}
+	
+	/// \brief redirects output from \b fd_source to \b fd_destination
+	///
+	/// \param fd_source Source file descriptor
+	/// \param fd_destination Destination file descriptor
+	inline fd_redirection& operator>(int fd_source, const linux_file_descriptor& fd_destination)
+	{
+		return *new fd_redirection(fd_source, fd_destination.fd);
+	}
+	
+	
+	template <typename T>
+	concept fd_redirection_type = std::is_same_v<T, fd_redirection>;
+	
+	/// \brief performs redirection of file descriptor according to \b redirection \b information
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////
+	///
+	/// this function uses dup2() call to set \b redirection.source fd equal to \b redirection.destination fd
+	///
+	/// \param redirection Redirection information object (usually result of \b operator>() call)
+	inline void process_redirection(fd_redirection redirection)
+	{
+		if (dup2(redirection.destination, redirection.source) >= 0)
+		{
+			LOG << "dup2() executed correctly. Redirected file descriptor " << color::reset << color::blue
+				<< linux_file_descriptor(redirection.source).to_string() << color::faint << color::yellow << " to " << color::reset << color::blue
+				<< linux_file_descriptor(redirection.destination).to_string() << color::faint << color::yellow << "." << ENDENT;
+		}
+		else
+		{
+			ERR << "Error " << errno << color::red << " in dup2(). " << ::strerrorname_np(errno) << " - " << ::strerrordesc_np(errno) << ENDENT;
+		}
+	}
+	
+	/// \brief performs multiple redirections of file descriptors according to \b redirection \b information
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////
+	///
+	/// this function uses dup2() call to set \b redirection.source fd equal to \b redirection.destination fd
+	///
+	/// \param redirections_head First redirection information object
+	/// \param redirections_tail Other redirection information objects
+	template <fd_redirection_type fd_redirection_t, fd_redirection_type... fd_redirect_t_other>
+	inline void process_redirections(fd_redirection_t redirections_head, fd_redirect_t_other... redirections_tail)
+	{
+		process_redirection(redirections_head);
+		if constexpr(sizeof...(redirections_tail) > 0)
+			process_redirection(redirections_tail...);
+	}
+	
+	
+	/// \brief executes application
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////
+	///
+	/// this function uses fork() call to create child process and execvpe() call to replace program with another
+	///
+	/// \param argc Arguments count (argv size)
+	/// \param argv An array of null-terminated strings that represents command line arguments where the first argument,
+	///             by convention, should point to the filename associated with the file being executed
+	/// \param environment An array of pointers to null-terminated strings and must be terminated by a null pointer
+	/// \param redirections list of file descriptor redirections
+	template <fd_redirection_type... fd_redirection_t>
+	inline pid_t execute_program(int argc, char* const* argv, char* const* environment, fd_redirection_t... redirections)
+	{
+		pid_t pid = ::fork();
+		if (pid > 0)
+		{
+			LOG << "fork() executed correctly. Child pid = " << pid << ENDENT;
+		}
+		else if (!pid)
+		{
+			if constexpr(sizeof...(redirections) > 0)
+				process_redirections(redirections...);
+			if (argc > 0)
+			{
+				if (environment)
+					execvpe(argv[0], argv, environment);
+				else
+					execvp(argv[0], argv);
+			}
+			else
+			{
+				ERR << "Invalid arguments. Their size must be greater than zero and argv[0] must specify program file name." << ENDENT;
+			}
+		}
+		else
+		{
+			ERR << "Error " << errno << color::red << " in fork(). " << ::strerrorname_np(errno) << " - " << ::strerrordesc_np(errno) << ENDENT;
+		}
+		return pid;
+	}
+}
+
+#endif //EXEC_PROCESS_LINUX_EXECUTE_PROCESS_LINUX_

@@ -1,0 +1,21 @@
+//
+// Created by imper on 1/17/22.
+//
+
+#ifndef EXEC_PROCESS_LINUX_EXECUTE_PROCESS_LINUX_DEFS_HPP
+#define EXEC_PROCESS_LINUX_EXECUTE_PROCESS_LINUX_DEFS_HPP
+
+#include "execute-process-linux"
+#include <log-console-defs>
+
+namespace exec
+{
+	log_console _log_(stdout);
+	log_console _err_(stderr);
+	
+	linux_file_descriptor std_in(0);
+	linux_file_descriptor std_out(1);
+	linux_file_descriptor std_err(2);
+}
+
+#endif //EXEC_PROCESS_LINUX_EXECUTE_PROCESS_LINUX_DEFS_HPP
