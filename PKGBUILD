@@ -2,11 +2,11 @@ pkgname="execute-process-linux"
 epoch=1
 pkgver=0
 pkgrel=0
-pkgdesc="console logger static library"
+pkgdesc="advanced process execution static library"
 arch=("x86_64")
 url="https://github.com/imperzer0/execute-process-linux"
 license=('GPL')
-depends=("log-cosole>=1.17-1")
+depends=("log-console>=1.17-1")
 makedepends=("cmake>=3.0")
 
 libfiles=("execute-process-linux" "execute-process-linux-defs")
