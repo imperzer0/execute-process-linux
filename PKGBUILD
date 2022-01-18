@@ -1,5 +1,5 @@
 pkgname="execute-process-linux"
-epoch=1
+epoch=2
 pkgver=0
 pkgrel=0
 pkgdesc="advanced process execution static library"

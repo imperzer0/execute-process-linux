@@ -65,6 +65,11 @@ namespace exec
 		
 		friend inline fd_redirection& operator>(int fd_source, const linux_file_descriptor& linux_fd_destination);
 		
+		friend inline fd_redirection& operator>(const linux_file_descriptor& fd_source, const std::string& filename);
+		
+		friend inline fd_redirection& operator>(const linux_file_descriptor& fd_source, FILE* file);
+		
+		/// \brief raw linux file descriptor
 		int fd;
 	};
 	
@@ -94,7 +99,10 @@ namespace exec
 	private:
 		friend inline void process_redirection(fd_redirection redirection);
 		
+		/// \brief file descriptor which will be redirected to \b destination
 		int source;
+		
+		/// \brief file descriptor to which will be redirected \b source
 		int destination;
 	};
 	
@@ -115,6 +123,18 @@ namespace exec
 	inline fd_redirection& operator>(int fd_source, const linux_file_descriptor& fd_destination)
 	{
 		return *new fd_redirection(fd_source, fd_destination.fd);
+	}
+	
+	/// \brief redirects output from \b fd_source to \b filename
+	///
+	/// \param fd_source Source file descriptor
+	/// \param file Pointer to write-open destination file
+	inline fd_redirection& operator>(const linux_file_descriptor& fd_source, FILE* file)
+	{
+		if (file)
+			return *new fd_redirection(fd_source.fd, file->_fileno);
+		else
+			return *new fd_redirection(-1, -1);
 	}
 	
 	
@@ -171,27 +191,39 @@ namespace exec
 	inline pid_t execute_program(int argc, char* const* argv, char* const* environment, fd_redirection_t... redirections)
 	{
 		pid_t pid = ::fork();
-		if (pid > 0)
+		if (pid > 0) // parent process
 		{
 			LOG << "fork() executed correctly. Child pid = " << pid << ENDENT;
 		}
-		else if (!pid)
+		else if (!pid) // child process
 		{
 			if constexpr(sizeof...(redirections) > 0)
 				process_redirections(redirections...);
 			if (argc > 0)
 			{
-				if (environment)
-					execvpe(argv[0], argv, environment);
-				else
-					execvp(argv[0], argv);
+				if (environment) // environment != nullptr
+				{
+					if (execvpe(argv[0], argv, environment) < 0) // error
+					{
+						ERR << "Error " << errno << color::red << " in execvpe(). " << ::strerrorname_np(errno) << " - " << ::strerrordesc_np(errno)
+							<< ENDENT;
+					}
+				}
+				else // environment == nullptr
+				{
+					if (execvp(argv[0], argv) < 0) // error
+					{
+						ERR << "Error " << errno << color::red << " in execvp(). " << ::strerrorname_np(errno) << " - " << ::strerrordesc_np(errno)
+							<< ENDENT;
+					}
+				}
 			}
 			else
 			{
 				ERR << "Invalid arguments. Their size must be greater than zero and argv[0] must specify program file name." << ENDENT;
 			}
 		}
-		else
+		else // error
 		{
 			ERR << "Error " << errno << color::red << " in fork(). " << ::strerrorname_np(errno) << " - " << ::strerrordesc_np(errno) << ENDENT;
 		}
