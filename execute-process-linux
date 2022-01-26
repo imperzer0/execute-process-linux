@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <log-console>
 #include <cstring>
+#include <sys/syslog.h>
 
 #define LOG _log_ << log_console::l_lock << log_console::l_localtime << l_location << color::faint << color::yellow
 #define ERR _err_ << log_console::l_lock << log_console::l_localtime << l_location << color::red
@@ -151,13 +152,14 @@ namespace exec
 	{
 		if (dup2(redirection.destination, redirection.source) >= 0)
 		{
-			LOG << "dup2() executed correctly. Redirected file descriptor " << color::reset << color::blue
-				<< linux_file_descriptor(redirection.source).to_string() << color::faint << color::yellow << " to " << color::reset << color::blue
-				<< linux_file_descriptor(redirection.destination).to_string() << color::faint << color::yellow << "." << ENDENT;
+			::syslog(
+					LOG_DEBUG, "dup2() executed correctly. Redirected file descriptor %s to %s.",
+					linux_file_descriptor(redirection.source).to_string().c_str(),
+					linux_file_descriptor(redirection.destination).to_string().c_str());
 		}
 		else
 		{
-			ERR << "Error " << errno << color::red << " in dup2(). " << ::strerrorname_np(errno) << " - " << ::strerrordesc_np(errno) << ENDENT;
+			::syslog(LOG_ERR, "Error %d in dup2(). %s - %s.", errno, ::strerrorname_np(errno), ::strerrordesc_np(errno));
 		}
 	}
 	
@@ -197,6 +199,7 @@ namespace exec
 		}
 		else if (!pid) // child process
 		{
+			::openlog(argv[0], LOG_PID | LOG_CONS, LOG_USER);
 			if constexpr(sizeof...(redirections) > 0)
 				process_redirections(redirections...);
 			if (argc > 0)
@@ -205,22 +208,20 @@ namespace exec
 				{
 					if (execvpe(argv[0], argv, environment) < 0) // error
 					{
-						ERR << "Error " << errno << color::red << " in execvpe(). " << ::strerrorname_np(errno) << " - " << ::strerrordesc_np(errno)
-							<< ENDENT;
+						::syslog(LOG_ERR, "Error %d in execvpe(). %s - %s.", errno, ::strerrorname_np(errno), ::strerrordesc_np(errno));
 					}
 				}
 				else // environment == nullptr
 				{
 					if (execvp(argv[0], argv) < 0) // error
 					{
-						ERR << "Error " << errno << color::red << " in execvp(). " << ::strerrorname_np(errno) << " - " << ::strerrordesc_np(errno)
-							<< ENDENT;
+						::syslog(LOG_ERR, "Error %d in execvp(). %s - %s.", errno, ::strerrorname_np(errno), ::strerrordesc_np(errno));
 					}
 				}
 			}
 			else
 			{
-				ERR << "Invalid arguments. Their size must be greater than zero and argv[0] must specify program file name." << ENDENT;
+				::syslog(LOG_ERR, "Invalid arguments. Their size must be greater than zero and argv[0] must specify program file name.");
 			}
 		}
 		else // error
