@@ -1,6 +1,6 @@
 pkgname="execute-process-linux"
 epoch=2
-pkgver=1
+pkgver=2
 pkgrel=0
 pkgdesc="advanced process execution static library"
 arch=("x86_64")
