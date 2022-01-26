@@ -183,7 +183,7 @@ namespace exec
 	template <fd_redirection_type... fd_redirection_t>
 	inline pid_t execute_program(int argc, char* const* argv, char* const* environment, fd_redirection_t... redirections)
 	{
-		pid_t pid = ::vfork();
+		pid_t pid = ::fork();
 		if (pid > 0) // parent process
 		{
 			LOG << "fork() executed correctly. Child pid = " << pid << ENDENT;
