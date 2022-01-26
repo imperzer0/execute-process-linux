@@ -123,7 +123,7 @@ namespace exec
 	/// \param fd_destination Destination file descriptor
 	inline fd_redirection& operator>(int fd_source, const linux_file_descriptor& fd_destination)
 	{
-		return *new fd_redirection(fd_source, fd_destination.fd);
+		return *new fd_redirection(fd_destination.fd, fd_source);
 	}
 	
 	/// \brief redirects output from \b fd_source to \b filename
@@ -150,17 +150,8 @@ namespace exec
 	/// \param redirection Redirection information object (usually result of \b operator>() call)
 	inline void process_redirection(fd_redirection redirection)
 	{
-		if (dup2(redirection.destination, redirection.source) >= 0)
-		{
-			::syslog(
-					LOG_DEBUG, "dup2() executed correctly. Redirected file descriptor %s to %s.",
-					linux_file_descriptor(redirection.source).to_string().c_str(),
-					linux_file_descriptor(redirection.destination).to_string().c_str());
-		}
-		else
-		{
-			::syslog(LOG_ERR, "Error %d in dup2(). %s - %s.", errno, ::strerrorname_np(errno), ::strerrordesc_np(errno));
-		}
+		::dup2(redirection.destination, redirection.source);
+		::close(redirection.destination);
 	}
 	
 	/// \brief performs multiple redirections of file descriptors according to \b redirection \b information
@@ -175,7 +166,7 @@ namespace exec
 	{
 		process_redirection(redirections_head);
 		if constexpr(sizeof...(redirections_tail) > 0)
-			process_redirection(redirections_tail...);
+			process_redirections(redirections_tail...);
 	}
 	
 	
@@ -192,36 +183,26 @@ namespace exec
 	template <fd_redirection_type... fd_redirection_t>
 	inline pid_t execute_program(int argc, char* const* argv, char* const* environment, fd_redirection_t... redirections)
 	{
-		pid_t pid = ::fork();
+		pid_t pid = ::vfork();
 		if (pid > 0) // parent process
 		{
 			LOG << "fork() executed correctly. Child pid = " << pid << ENDENT;
 		}
 		else if (!pid) // child process
 		{
-			::openlog(argv[0], LOG_PID | LOG_CONS, LOG_USER);
 			if constexpr(sizeof...(redirections) > 0)
 				process_redirections(redirections...);
+			
 			if (argc > 0)
 			{
 				if (environment) // environment != nullptr
 				{
-					if (execvpe(argv[0], argv, environment) < 0) // error
-					{
-						::syslog(LOG_ERR, "Error %d in execvpe(). %s - %s.", errno, ::strerrorname_np(errno), ::strerrordesc_np(errno));
-					}
+					::execvpe(argv[0], argv, environment);
 				}
 				else // environment == nullptr
 				{
-					if (execvp(argv[0], argv) < 0) // error
-					{
-						::syslog(LOG_ERR, "Error %d in execvp(). %s - %s.", errno, ::strerrorname_np(errno), ::strerrordesc_np(errno));
-					}
+					::execvp(argv[0], argv);
 				}
-			}
-			else
-			{
-				::syslog(LOG_ERR, "Invalid arguments. Their size must be greater than zero and argv[0] must specify program file name.");
 			}
 		}
 		else // error

@@ -13,9 +13,9 @@ namespace exec
 	log_console _log_(stdout);
 	log_console _err_(stderr);
 	
-	linux_file_descriptor std_in(0);
-	linux_file_descriptor std_out(1);
-	linux_file_descriptor std_err(2);
+	linux_file_descriptor std_in(STDIN_FILENO);
+	linux_file_descriptor std_out(STDOUT_FILENO);
+	linux_file_descriptor std_err(STDERR_FILENO);
 }
 
 #endif //EXEC_PROCESS_LINUX_EXECUTE_PROCESS_LINUX_DEFS_
