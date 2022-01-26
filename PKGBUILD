@@ -1,6 +1,7 @@
 pkgname="execute-process-linux"
 epoch=2
 pkgver=3
+pkgrel=0
 pkgdesc="advanced process execution static library"
 arch=("x86_64")
 url="https://github.com/imperzer0/execute-process-linux"
