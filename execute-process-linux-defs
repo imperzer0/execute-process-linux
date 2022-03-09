@@ -2,20 +2,16 @@
 // Created by imper on 1/17/22.
 //
 
-#ifndef EXEC_PROCESS_LINUX_EXECUTE_PROCESS_LINUX_DEFS_
-#define EXEC_PROCESS_LINUX_EXECUTE_PROCESS_LINUX_DEFS_
+#ifndef EXECUTE_PROCESS_LINUX_EXECUTE_PROCESS_LINUX_DEFS_
+#define EXECUTE_PROCESS_LINUX_EXECUTE_PROCESS_LINUX_DEFS_
 
 #include "execute-process-linux"
-#include <log-console-defs>
 
 namespace exec
 {
-	log_console _log_(stdout);
-	log_console _err_(stderr);
-	
 	linux_file_descriptor std_in(STDIN_FILENO);
 	linux_file_descriptor std_out(STDOUT_FILENO);
 	linux_file_descriptor std_err(STDERR_FILENO);
 }
 
-#endif //EXEC_PROCESS_LINUX_EXECUTE_PROCESS_LINUX_DEFS_
+#endif //EXECUTE_PROCESS_LINUX_EXECUTE_PROCESS_LINUX_DEFS_

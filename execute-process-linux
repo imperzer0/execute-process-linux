@@ -6,19 +6,12 @@
 #define EXEC_PROCESS_LINUX_EXECUTE_PROCESS_LINUX_
 
 #include <unistd.h>
-#include <log-console>
 #include <cstring>
-#include <sys/syslog.h>
-
-#define LOG _log_ << log_console::l_lock << log_console::l_localtime << l_location << color::faint << color::yellow
-#define ERR _err_ << log_console::l_lock << log_console::l_localtime << l_location << color::red
-#define ENDENT color::reset << log_console::l_endent
+#include <memory>
+#include <sys/fcntl.h>
 
 namespace exec
 {
-	extern log_console _log_;
-	extern log_console _err_;
-	
 	namespace pipe
 	{
 		enum : int
@@ -29,8 +22,28 @@ namespace exec
 		};
 	}
 	
+	/// file descriptor redirection information class
+	class fd_redirection
+	{
+	public:
+		inline fd_redirection(int source, int destination) : source(source), destination(destination)
+		{ }
+		
+		[[nodiscard]] inline int get_source() const
+		{ return source; }
+		
+		[[nodiscard]] inline int get_destination() const
+		{ return destination; }
 	
-	class fd_redirection;
+	private:
+		friend inline void process_redirection(std::shared_ptr<fd_redirection> redirection);
+		
+		/// \brief file descriptor which will be redirected to \b destination
+		int source;
+		
+		/// \brief file descriptor to which will be redirected \b source
+		int destination;
+	};
 	
 	/// linux file descriptor wrapper class
 	class linux_file_descriptor
@@ -60,17 +73,58 @@ namespace exec
 			}
 			return res;
 		}
+		
+		/// \brief Creates redirection
+		/// \param destfd  Destination file descriptor
+		/// \return Redirection from \b this.fd to \b destfd.fd
+		[[nodiscard]] inline std::shared_ptr<fd_redirection> redirect_to(const linux_file_descriptor& destfd) const
+		{
+			return redirect_to(destfd.fd);
+		}
+		
+		/// \brief Creates redirection
+		/// \param destfd  Destination file descriptor
+		/// \return Redirection from \b this.fd to \b destfd
+		[[nodiscard]] inline std::shared_ptr<fd_redirection> redirect_to(int destfd) const
+		{
+			int this_mode = ::fcntl(this->fd, F_GETFL);
+			int destfd_mode = ::fcntl(destfd, F_GETFL);
+			switch (this_mode & O_ACCMODE)
+			{
+				case O_RDONLY:
+					switch (destfd_mode & O_ACCMODE)
+					{
+						case O_RDONLY:
+						case O_RDWR:
+							return std::make_shared<fd_redirection>(destfd, this->fd);
+					}
+					break;
+				
+				case O_WRONLY:
+					switch (destfd_mode & O_ACCMODE)
+					{
+						case O_WRONLY:
+						case O_RDWR:
+							return std::make_shared<fd_redirection>(this->fd, destfd);
+					}
+					break;
+				
+				case O_RDWR:
+					switch (destfd_mode & O_ACCMODE)
+					{
+						case O_RDONLY:
+							return std::make_shared<fd_redirection>(destfd, this->fd);
+						case O_WRONLY:
+							return std::make_shared<fd_redirection>(this->fd, destfd);
+					}
+					break;
+			}
+			
+			return std::make_shared<fd_redirection>(-1, -1);
+		}
 	
 	private:
-		friend inline fd_redirection& operator>(const linux_file_descriptor& linux_fd_source, int fd_destination);
-		
-		friend inline fd_redirection& operator>(int fd_source, const linux_file_descriptor& linux_fd_destination);
-		
-		friend inline fd_redirection& operator>(const linux_file_descriptor& fd_source, const std::string& filename);
-		
-		friend inline fd_redirection& operator>(const linux_file_descriptor& fd_source, FILE* file);
-		
-		/// \brief raw linux file descriptor
+		/// \brief Raw linux file descriptor
 		int fd;
 	};
 	
@@ -84,63 +138,49 @@ namespace exec
 	extern linux_file_descriptor std_err;
 	
 	
-	/// file descriptor redirection information class
-	class fd_redirection
-	{
-	public:
-		inline fd_redirection(int source, int destination) : source(source), destination(destination)
-		{ }
-		
-		[[nodiscard]] inline int get_source() const
-		{ return source; }
-		
-		[[nodiscard]] inline int get_destination() const
-		{ return destination; }
-	
-	private:
-		friend inline void process_redirection(fd_redirection redirection);
-		
-		/// \brief file descriptor which will be redirected to \b destination
-		int source;
-		
-		/// \brief file descriptor to which will be redirected \b source
-		int destination;
-	};
-	
-	
-	/// \brief redirects output from \b fd_source to \b fd_destination
+	/// \brief redirects stream from \b fd_source to \b fd_destination
 	///
 	/// \param fd_source Source file descriptor
 	/// \param fd_destination Destination file descriptor
-	inline fd_redirection& operator>(const linux_file_descriptor& fd_source, int fd_destination)
+	inline static std::shared_ptr<fd_redirection> operator>(const linux_file_descriptor& fd_source, const linux_file_descriptor& fd_destination)
 	{
-		return *new fd_redirection(fd_source.fd, fd_destination);
+		return fd_source.redirect_to(fd_destination);
 	}
 	
-	/// \brief redirects output from \b fd_source to \b fd_destination
+	
+	/// \brief redirects stream from \b fd_source to \b fd_destination
 	///
 	/// \param fd_source Source file descriptor
 	/// \param fd_destination Destination file descriptor
-	inline fd_redirection& operator>(int fd_source, const linux_file_descriptor& fd_destination)
+	inline static std::shared_ptr<fd_redirection> operator>(const linux_file_descriptor& fd_source, int fd_destination)
 	{
-		return *new fd_redirection(fd_destination.fd, fd_source);
+		return fd_source.redirect_to(fd_destination);
 	}
 	
-	/// \brief redirects output from \b fd_source to \b filename
+	/// \brief redirects stream from \b fd_source to \b fd_destination
+	///
+	/// \param fd_source Source file descriptor
+	/// \param fd_destination Destination file descriptor
+	inline std::shared_ptr<fd_redirection> operator>(int fd_source, const linux_file_descriptor& fd_destination)
+	{
+		return fd_destination.redirect_to(fd_source);
+	}
+	
+	/// \brief redirects stream from \b fd_source to \b filename
 	///
 	/// \param fd_source Source file descriptor
 	/// \param file Pointer to write-open destination file
-	inline fd_redirection& operator>(const linux_file_descriptor& fd_source, FILE* file)
+	inline std::shared_ptr<fd_redirection> operator>(const linux_file_descriptor& fd_source, FILE* file)
 	{
 		if (file)
-			return *new fd_redirection(fd_source.fd, file->_fileno);
+			return fd_source.redirect_to(file->_fileno);
 		else
-			return *new fd_redirection(-1, -1);
+			return std::make_shared<fd_redirection>(-1, -1);
 	}
 	
 	
 	template <typename T>
-	concept fd_redirection_type = std::is_same_v<T, fd_redirection>;
+	concept fd_redirection_type = std::is_same_v<T, std::shared_ptr<fd_redirection>>;
 	
 	/// \brief performs redirection of file descriptor according to \b redirection \b information
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -148,10 +188,10 @@ namespace exec
 	/// this function uses dup2() call to set \b redirection.source fd equal to \b redirection.destination fd
 	///
 	/// \param redirection Redirection information object (usually result of \b operator>() call)
-	inline void process_redirection(fd_redirection redirection)
+	inline void process_redirection(std::shared_ptr<fd_redirection> redirection)
 	{
-		::dup2(redirection.destination, redirection.source);
-		::close(redirection.destination);
+		::dup2(redirection->destination, redirection->source);
+		::close(redirection->destination);
 	}
 	
 	/// \brief performs multiple redirections of file descriptors according to \b redirection \b information
@@ -181,33 +221,23 @@ namespace exec
 	/// \param environment An array of pointers to null-terminated strings and must be terminated by a null pointer
 	/// \param redirections list of file descriptor redirections
 	template <fd_redirection_type... fd_redirection_t>
-	inline pid_t execute_program(int argc, char* const* argv, char* const* environment, fd_redirection_t... redirections)
+	inline pid_t execute_program(char* const* argv, char* const* environment, fd_redirection_t... redirections)
 	{
+		errno = 0;
 		pid_t pid = ::fork();
-		if (pid > 0) // parent process
-		{
-			LOG << "fork() executed correctly. Child pid = " << pid << ENDENT;
-		}
-		else if (!pid) // child process
+		if (!pid) // child process
 		{
 			if constexpr(sizeof...(redirections) > 0)
 				process_redirections(redirections...);
 			
-			if (argc > 0)
+			if (environment) // environment != nullptr
 			{
-				if (environment) // environment != nullptr
-				{
-					::execvpe(argv[0], argv, environment);
-				}
-				else // environment == nullptr
-				{
-					::execvp(argv[0], argv);
-				}
+				::execvpe(argv[0], argv, environment);
 			}
-		}
-		else // error
-		{
-			ERR << "Error " << errno << color::red << " in fork(). " << ::strerrorname_np(errno) << " - " << ::strerrordesc_np(errno) << ENDENT;
+			else // environment == nullptr
+			{
+				::execvp(argv[0], argv);
+			}
 		}
 		return pid;
 	}
