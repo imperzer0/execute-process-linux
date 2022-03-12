@@ -2,13 +2,16 @@
 // Created by imper on 1/17/22.
 //
 
-#ifndef EXEC_PROCESS_LINUX_EXECUTE_PROCESS_LINUX_
-#define EXEC_PROCESS_LINUX_EXECUTE_PROCESS_LINUX_
+#ifndef EXECUTE_PROCESS_LINUX_EXECUTE_PROCESS_LINUX_
+#define EXECUTE_PROCESS_LINUX_EXECUTE_PROCESS_LINUX_
 
 #include <unistd.h>
 #include <cstring>
 #include <memory>
 #include <sys/fcntl.h>
+#include <sys/wait.h>
+
+#define EXECUTION_FAILED INT32_MIN
 
 namespace exec
 {
@@ -241,6 +244,17 @@ namespace exec
 		}
 		return pid;
 	}
+	
+	inline int wait_for_program(pid_t pid)
+	{
+		if (pid > 0)
+		{
+			int stat;
+			::waitpid(pid, &stat, 0);
+			return WEXITSTATUS(stat);
+		}
+		return EXECUTION_FAILED;
+	}
 }
 
-#endif //EXEC_PROCESS_LINUX_EXECUTE_PROCESS_LINUX_
+#endif //EXECUTE_PROCESS_LINUX_EXECUTE_PROCESS_LINUX_
